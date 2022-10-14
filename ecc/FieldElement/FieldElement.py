@@ -59,14 +59,6 @@ class FieldElement:
         return FieldElement(result, self._prime)
 
     @convertrhs
-    def __ge__(self, rhs) -> bool:
-        return self._num >= rhs._num
-
-    @convertrhs
-    def __le__(self, rhs) -> bool:
-        return self._num <= rhs._num
-
-    @convertrhs
     def __eq__(self, rhs) -> bool:
         return self._num == rhs._num
 
@@ -74,5 +66,21 @@ class FieldElement:
     def __neq__(self, rhs: Union[int, Type[FieldElement]]) -> bool:
         return not self.__eq__(rhs)
 
+    @convertrhs
+    def __gt__(self, rhs) -> bool:
+        return self._num > rhs._num
+
+    @convertrhs
+    def __ge__(self, rhs) -> bool:
+        return self._num >= rhs._num
+
+    @convertrhs
+    def __lt__(self, rhs) -> bool:
+        return self._num < rhs._num
+
+    @convertrhs
+    def __le__(self, rhs) -> bool:
+        return self._num <= rhs._num
+
     def __repr__(self) -> str:
-        return f"<FieldElement<{self._prime}>({self._num})>"
+        return f"<FieldElement[{self._num}|{self._prime}]>"

@@ -45,27 +45,49 @@ def test_sub():
     assert a - b == (2 - 4) % 5
 
 
-def test_eqint(resource):
-    assert resource == 1
+def test_eq():
+    a = FE(4, 5)
+    b = FE(4, 5)
+    assert a == b
+    assert a == 4
 
+def test_neq():
+    a = FE(3, 5)
+    b = FE(4, 5)
+    assert a != b
+    assert a != 4
 
-def test_nqint(resource):
-    assert resource != 2
+def test_gt():
+    a = FE(2, 11)
+    b = FE(1, 11)
+    assert a > b
+    assert a > 1
 
+def test_ge():
+    a = FE(9, 11)
+    b = FE(9, 11)
+    c = FE(8, 11)
+    d = FE(10, 11)
+    assert a >= b
+    assert a >= 9
+    assert a >= c
+    assert d >= b
 
-def test_addint(resource):
-    assert resource + 4 == 5
+def test_lt():
+    a = FE(5, 11)
+    b = FE(1, 11)
+    assert b < a
+    assert b < 5
 
+def test_le():
+    a = FE(8, 9)
+    b = FE(5, 9)
+    c = FE(8, 9)
+    assert a <= 8
+    assert b <= a
+    assert a <= c
 
-def test_addinvint(resource):
-    new_f = resource - 1
-    print(new_f)
-    assert resource - 1 == 0
+def test_repr():
+    a = FE(1, 13)
+    assert repr(a) == '<FieldElement[1|13]>'
 
-
-def test_multint(resource):
-    assert resource * 45 == 45 % 17
-
-
-def test_divint():
-    FE = FieldElement
