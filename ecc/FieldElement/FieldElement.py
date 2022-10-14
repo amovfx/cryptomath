@@ -39,7 +39,7 @@ class FieldElement:
     def __mul__(self, rhs: FieldInt) -> Type[FieldElement]:
         result = (self._num * rhs._num) % self._prime
         return FieldElement(result, self._prime)
-    
+
     @convertrhs
     def __truediv__(self, rhs: FieldInt) -> Type[FieldElement]:
         result = self._num * pow(rhs._num, self._prime - 2, self._prime) % self._prime
@@ -58,8 +58,6 @@ class FieldElement:
         result = (self._num - rhs._num) % self._prime
         return FieldElement(result, self._prime)
 
-
-    
     @convertrhs
     def __ge__(self, rhs) -> bool:
         return self._num >= rhs._num
@@ -72,11 +70,9 @@ class FieldElement:
     def __eq__(self, rhs) -> bool:
         return self._num == rhs._num
 
-
     @convertrhs
     def __neq__(self, rhs: Union[int, Type[FieldElement]]) -> bool:
         return not self.__eq__(rhs)
-
 
     def __repr__(self) -> str:
         return f"<FieldElement<{self._prime}>({self._num})>"
