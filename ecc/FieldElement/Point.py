@@ -92,7 +92,7 @@ class S256Point(Point):
     def __init__(
         self,
         x: Type[S256Field],
-        y: Type[S256Field|None] = None,
+        y: Type[S256Field],
         a: Type[S256Field] = S256Field(SECP256K1.A.value),
         b: Type[S256Field] = S256Field(SECP256K1.B.value),
     ):
