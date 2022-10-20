@@ -2,14 +2,6 @@ from FieldElement.FieldElement import FieldElement as FE
 import pytest
 
 
-@pytest.fixture()
-def resource():
-    print("setup")
-    FE = FieldElement(1, 17)
-    yield FE
-    print("teardown")
-
-
 def test_pow():
     a = FE(2, 11)
     b = FE(8, 11)
