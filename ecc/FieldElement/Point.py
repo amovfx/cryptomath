@@ -2,10 +2,11 @@ from multiprocessing.sharedctypes import Value
 from FieldElement.FieldElement import FieldElement as FE
 from FieldElement.FieldElement import S256Field
 from FieldElement.Constants import SECP256K1
-from typing import Type, Optional
+from typing import Type, TypeVar
 from operator import __eq__
 import secrets
 import hashlib
+import math
 
 
 class Point:
@@ -19,11 +20,20 @@ class Point:
         self.x = x
         self.y = y
 
-        if all(type(self.x) == type(var) for var in vars(self)):
-            raise TypeError(f"Please initialize {self} with all same types.")
+        if self.y is None:
+            if self.x is None:
+                return
+            else:
+                self.y = self.calculate_y()
 
-        if self.x is None and self.y is None:
-            return
+        if not all([type(self.x) == type(getattr(self,var)) for var in vars(self)]):
+            raise TypeError("Types/Classes dont match")
+
+        if not self.onCurve():
+            raise ValueError("Point not on curve")
+
+    def calculate_y(self):
+        return math.sqrt(self.x**3 + self.a * self.x + self.b) if self.x is not None else None
 
     def as_tuple(self):
         return (self.x, self.y, self.a, self.b)
@@ -32,7 +42,7 @@ class Point:
         self.x.num.to_bytes(32, byteorder="big")
 
     def onCurve(self) -> bool:
-        return self.y * self.y == self.x ** 3 + self.a * self.x + self.b
+        return self.y * self.y == self.x**3 + self.a * self.x + self.b
 
     def __eq__(self, rhs: Type[Point]) -> Type[Point]:
         return all(getattr(self, var) == getattr(rhs, var) for var in vars(self))
@@ -87,15 +97,25 @@ class Point:
     def __repr__(self):
         return f"<ECCPoint[{self.x},{self.y},{self.a},{self.b}]>"
 
+OptionalS256Field = TypeVar('OptionalS256Field', Type[S256Field], None)
 
 class S256Point(Point):
     def __init__(
         self,
-        x: Type[S256Field],
-        y: Type[S256Field],
+        x: OptionalS256Field,
+        y: OptionalS256Field = None,
         a: Type[S256Field] = S256Field(SECP256K1.A.value),
         b: Type[S256Field] = S256Field(SECP256K1.B.value),
     ):
+
+        if y is None:
+            if not x is None:
+                y_squared: Type[S256Field] = x**3 + a * x + b
+                y = y_squared.sqrt()
+                if y_squared != y**2:
+                    raise ValueError(f"Point<{x}|{y}> not on curve.")
+                if y.value & 1:
+                    y = -y
 
         super().__init__(
             x,
@@ -104,16 +124,6 @@ class S256Point(Point):
             b,
         )
 
-    @classmethod
-    def make_from_x(cls,x):
-        x = S256Field(num=x)
-        y_squared = x**3 + S256Field(SECP256K1.A.value) * x + S256Field(SECP256K1.B.value)
-        y = y_squared.sqrt()
-        return (
-            S256Point(x=x, y=y)
-            if y & 0
-            else S256Point(x=x, y=(-y))
-        )
 
     def __rmul__(self, coefficient):
         coef = coefficient % SECP256K1.ORDER
@@ -121,19 +131,31 @@ class S256Point(Point):
 
     def lift_x(self):
         y_squared = self.x**3 + self.a * self.x + self.b
-        y = self.y.sqrt()
+        y = y_squared.sqrt()
         if y_squared != y**2:
-            return self
+            return None
 
-        return (
-            self.__class__(x=self.x, y=self.y)
-            if y & 0
-            else self._class(x=self.x, y=-self.y)
-        )
+        if y._num & 0:
+            return self.__class__(x=self.x, y=-y)
+        else:
+            return self.__class__(x=self.x, y=y)
+
+    def is_even(self) -> bool:
+        return self.y.value & 0
 
 
-    def to_bytes(self):
-        return self.x._num.to_bytes(32, byteorder="big")
+
+    def x_bytes(self):
+        return self.x.to_bytes() if self.x is not None else None
+
+    def __neg__(self):
+        return self.__class__(self.x, -self.y, self.a, self.b)
+
+    def __repr__(self):
+        if not self.x is None and not self.y is None:
+            return f"<S256Point[{self.x._num},{self.y._num}]>"
+        else:
+            return f"<S256Infinity>"
 
 
 class GeneratorPoint(S256Point):
@@ -149,18 +171,25 @@ class GeneratorPoint(S256Point):
     def __repr__(self):
         return "<GeneratorPoint>"
 
+    def __rmul__(self, coefficient):
+        val= super().__rmul__(coefficient)
+        val.__class__ = S256Point
+        return val
+
 
 class KeyPair:
-    def __init__(self):
-        self.privkey = int.from_bytes(secrets.token_bytes(32), byteorder="big") % SECP256K1.ORDER-1
+    def __init__(self):        
         self.G = GeneratorPoint()
         self.aux_rand = bytes(32)
-        self.pubkey = self.make_public_key(self.privkey)
+        privkey = int.from_bytes(secrets.token_bytes(32), byteorder="big") % SECP256K1.ORDER-1
+        self.privkey, self.pubkey = self.make_public_point(privkey)
 
-    def make_public_key(self,r):
+    def make_public_point(self,r):
         pub = r * self.G
-        pub = pub.lift_x()
-        return pub
+        if pub.is_even():
+            return r,pub
+        else:
+            return SECP256K1.ORDER - r, -pub
 
     def get_priv(self):
         return self.privkey
@@ -175,21 +204,75 @@ class KeyPair:
 
         hashed_message = self.H(msg)
         #k is random value from 1 to SECP256K1.ORDER-1
-        r = int.from_bytes(secrets.token_bytes(32), byteorder="big") % SECP256K1.ORDER-1
+        r = int.from_bytes(secrets.token_bytes(32), byteorder="big")
         #r is the x coordinate of the point k*G
-        R = self.make_public_key(r)  # r * G
-        s = (r + hashed_message * self.privkey) % SECP256K1.ORDER
-        return R.to_bytes() + s.to_bytes(32, byteorder="big")
+        r,R = self.make_public_point(r)  # r * G
+        #r = r if R.y.value & 0 else SECP256K1.ORDER - r 
+        s = (r + (hashed_message * self.privkey)) % SECP256K1.ORDER
+        lhs = (s * self.G)
+        rhs = R + (hashed_message * self.pubkey)
+        assert(lhs == rhs)
+
+
+        r1 = int.from_bytes(secrets.token_bytes(32), byteorder="big")
+        r1,R1 = self.make_public_point(r1)
+
+        newkey = int.from_bytes(secrets.token_bytes(32), byteorder="big") % SECP256K1.ORDER-1
+        newkey, newpub = self.make_public_point(newkey)
+        s1 = (r1 + (hashed_message * newkey)) % SECP256K1.ORDER
+
+        lhs1 = (s1 * self.G)
+        rhs1 = R1 + (hashed_message * newpub)
+        assert lhs1 == rhs1
+        assert lhs+lhs1 == rhs+rhs1
+
+
+        rhs2 = S256Point(x=S256Field(R.x.value)) + (hashed_message * self.pubkey)
+        s_bytes = s.to_bytes(32, byteorder='big')
+        r_bytes = R.x.value.to_bytes(32, byteorder='big')
+        the_bytes = r_bytes + s_bytes
+
+        s_from_bytes = int.from_bytes(the_bytes[32:], byteorder="big")
+        r_from_bytes = int.from_bytes(the_bytes[:32], byteorder="big")
+        R_from_bytes = S256Point(x=S256Field(r_from_bytes))
+        rhs3 = R_from_bytes + (hashed_message * self.pubkey)
+
+        
+        return lhs==rhs3
+
+    def sign_tweaked(self):
+
+        tweaked_val = int.from_bytes(secrets.token_bytes(32), byteorder="big")
+        tweaked_val,tweaked_point = self.make_public_point(tweaked_val)
+
+        priv_key,pub_point = self.make_public_point(self.privkey)
+        tweaked_priv_key,tweaked_pub_point = self.make_public_point((tweaked_val + self.privkey) % SECP256K1.ORDER)
+
+        hashed_message = self.H("hello world")
+        r = int.from_bytes(secrets.token_bytes(32), byteorder="big")
+        r,R = self.make_public_point(r)  # r * G
+        s = r + (hashed_message * tweaked_priv_key) % SECP256K1.ORDER
+        lhs = (s * self.G)
+        rhs = R + (hashed_message * tweaked_pub_point)
+        return lhs==rhs
+
+
+
+
+
+
 
     def verify(self, msg, sig, public_key):
+        rx = int.from_bytes(sig[:32], byteorder="big")
 
         s = int.from_bytes(sig[32:], byteorder="big")
+
         rhs = s * self.G
-        rx = int.from_bytes(sig[:32], byteorder="big")
-        R = S256Point.make_from_x(x=rx)
+        
+        R = S256Point(x=S256Field(rx))
         K = public_key
 
-        lhs = R + self.H(msg)*K
+        lhs = R + (self.H(msg))*K
         
         val = lhs == rhs
         return val
